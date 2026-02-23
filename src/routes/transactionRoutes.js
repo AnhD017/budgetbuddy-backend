@@ -57,36 +57,67 @@ router.get("/", verifyToken, async (req, res) => {
   }
 });
 
-// MONTHLY SUMMARY
-router.get("/summary/monthly", verifyToken, async (req, res) => {
+
+// Time filtering 
+router.get("/summary", verifyToken, async (req, res) => {
   try {
     const userId = req.user.uid;
+    const { period, start, end } = req.query;
+
+    let startDate, endDate;
+    const now = new Date();
+
+    if (period === "daily") {
+      startDate = new Date(now.setHours(0,0,0,0));
+      endDate = new Date();
+    } 
+    else if (period === "weekly") {
+      startDate = new Date();
+      startDate.setDate(now.getDate() - 7);
+      endDate = new Date();
+    } 
+    else if (period === "monthly") {
+      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+      endDate = new Date();
+    } 
+    else if (start && end) {
+      startDate = new Date(start);
+      endDate = new Date(end);
+    }
 
     const snapshot = await db
       .collection("users")
       .doc(userId)
       .collection("transactions")
+      .where("createdAt", ">=", startDate)
+      .where("createdAt", "<=", endDate)
       .get();
 
     let income = 0;
     let expense = 0;
+    const categoryMap = {};
 
     snapshot.forEach(doc => {
       const data = doc.data();
       if (data.type === "income") income += data.amount;
-      if (data.type === "expense") expense += data.amount;
+      if (data.type === "expense") {
+        expense += data.amount;
+        categoryMap[data.category] = 
+          (categoryMap[data.category] || 0) + data.amount;
+      }
     });
 
     res.json({
+      period,
       income,
       expense,
-      balance: income - expense
+      balance: income - expense,
+      categoryBreakdown: categoryMap
     });
 
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
-
 
 export default router;
